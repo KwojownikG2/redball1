@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Czerwona Piłka - Gra</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+        }
+        canvas {
+            display: block;
+            background-color: #e0e0e0;
+        }
+        #lobby {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            background-color: #e0e0e0;
+        }
+        #lobby h1 {
+            font-size: 64px;
+            margin-bottom: 50px;
+            color: red;
+        }
+        #lobby button {
+            font-size: 24px;
+            padding: 15px 30px;
+            margin: 10px;
+            cursor: pointer;
+        }
+        #settings {
+            display: none;
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: white;
+            padding: 10px;
+            border: 2px solid black;
+        }
+    </style>
+</head>
+<body>
+
+<!-- Lobby -->
+<div id="lobby">
+    <h1>Czerwona Piłka</h1>
+    <button id="playButton">Graj</button>
+    <button id="settingsButton">Ustawienia</button>
+</div>
+
+<!-- Ustawienia -->
+<div id="settings">
+    <label for="spawnTime">Czas pojawiania się przeciwników (ms):</label>
+    <input type="number" id="spawnTime" value="2000">
+    <br><br>
+    <label for="ballColor">Wybierz kolor piłki:</label>
+    <select id="ballColor">
+        <option value="red">Czerwony</option>
+        <option value="blue">Niebieski</option>
+        <option value="green">Zielony</option>
+        <option value="yellow">Żółty</option>
+    </select>
+    <br><br>
+    <strong>Pokonani przeciwnicy: <span id="score">0</span></strong>
+    <br>
+    <strong>Życia: <span id="lives">3</span></strong>
+</div>
+
+<canvas id="gameCanvas" style="display: none;"></canvas>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const lobby = document.getElementById('lobby');
+    const settingsDiv = document.getElementById('settings');
+    const playButton = document.getElementById('playButton');
+    const settingsButton = document.getElementById('settingsButton');
+    const spawnTimeInput = document.getElementById('spawnTime');
+    const ballColorSelect = document.getElementById('ballColor');
+    const scoreDisplay = document.getElementById('score');
+    const livesDisplay = document.getElementById('lives');
+
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    let ball = {
+        x: 100,
+        y: canvas.height - 50,
+        radius: 20,
+        color: ballColorSelect.value,
+        dx: 0,
+        dy: 0,
+        gravity: 0.8,
+        jumpPower: -15,
+        highJumpPower: -25,
+        grounded: true,
+        points: 0,
+        lives: 3
+    };
+
+    let enemies = [];
+    let spawnTime = 2000; // Domyślny czas pojawiania się przeciwników
+    let gameRunning = false;
+
+    let keys = {
+        left: false,
+        right: false,
+        jump: false,
+        highJump: false
+    };
+
+    // Funkcja rysowania piłki
+    function drawBall() {
+        ctx.beginPath();
+        ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+        ctx.fillStyle = ball.color;
+        ctx.fill();
+        ctx.closePath();
+    }
+
+    // Funkcja rysowania przeciwników
+    function drawEnemies() {
+        enemies.forEach(enemy => {
+            ctx.fillStyle = 'black';
+            ctx.fillRect(enemy.x, enemy.y, enemy.size, enemy.size);
+        });
+    }
+
+    // Funkcja aktualizacji przeciwników
+    function updateEnemies() {
+        enemies.forEach(enemy => {
+            if (enemy.x < ball.x) {
+                enemy.x += enemy.speed;
+            } else {
+                enemy.x -= enemy.speed;
+            }
+
+            if (
+                ball.x + ball.radius >= enemy.x &&
+                ball.x - ball.radius <= enemy.x + enemy.size &&
+                ball.y + ball.radius >= enemy.y &&
+                ball.y - ball.radius <= enemy.y + enemy.size
+            ) {
+                if (ball.y + ball.radius <= enemy.y + 10) {
+                    ball.points += 1;
+                    scoreDisplay.innerText = ball.points;
+                    enemies.splice(enemies.indexOf(enemy), 1);
+                } else {
+                    ball.lives -= 1;
+                    livesDisplay.innerText = ball.lives;
+                    enemies.splice(enemies.indexOf(enemy), 1);
+                    if (ball.lives <= 0) {
+                        alert("Koniec gry! Straciłeś wszystkie życia.");
+                        resetGame();
+                    }
+                }
+            }
+        });
+
+        if (ball.points >= 20) {
+            alert("Wygrałeś! Zdobyłeś 20 punktów!");
+            resetGame();
+        }
+    }
+
+    // Funkcja aktualizacji piłki
+    function updateBall() {
+        if (keys.left) {
+            ball.dx = -5;
+        } else if (keys.right) {
+            ball.dx = 5;
+        } else {
+            ball.dx = 0;
+        }
+
+        if (keys.jump && ball.grounded) {
+            ball.dy = ball.jumpPower;
+            ball.grounded = false;
+        }
+
+        if (keys.highJump && ball.grounded) {
+            ball.dy = ball.highJumpPower;
+            ball.grounded = false;
+        }
+
+        ball.dy += ball.gravity;
+        ball.x += ball.dx;
+        ball.y += ball.dy;
+
+        if (ball.y + ball.radius > canvas.height) {
+            ball.y = canvas.height - ball.radius;
+            ball.dy = 0;
+            ball.grounded = true;
+        }
+
+        if (ball.x - ball.radius < 0) {
+            ball.x = ball.radius;
+        } else if (ball.x + ball.radius > canvas.width) {
+            ball.x = canvas.width - ball.radius;
+        }
+    }
+
+    // Funkcja dodawania przeciwników
+    function spawnEnemy() {
+        if (!gameRunning) return;
+
+        const enemySize = 30;
+        const enemySpeed = 2;
+
+        let enemy = {
+            x: Math.random() * canvas.width,
+            y: canvas.height - enemySize,
+            size: enemySize,
+            speed: enemySpeed
+        };
+
+        enemies.push(enemy);
+    }
+
+    // Główna pętla gry
+    function gameLoop() {
+        if (!gameRunning) return;
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        drawBall();
+        drawEnemies();
+        updateBall();
+        updateEnemies();
+
+        requestAnimationFrame(gameLoop);
+    }
+
+    // Reset gry i powrót do lobby
+    function resetGame() {
+        gameRunning = false;
+        enemies = [];
+        ball.points = 0;
+        ball.lives = 3;
+        scoreDisplay.innerText = ball.points;
+        livesDisplay.innerText = ball.lives;
+
+        canvas.style.display = 'none';
+        lobby.style.display = 'flex';
+    }
+
+    // Obsługa klawiszy
+    window.addEventListener('keydown', function (e) {
+        if (e.key === 'a') {
+            keys.left = true;
+        }
+        if (e.key === 'd') {
+            keys.right = true;
+        }
+        if (e.code === 'Space') {
+            keys.jump = true;
+        }
+        if (e.ctrlKey && e.code === 'Space') {
+            keys.highJump = true;
+        }
+    });
+
+    window.addEventListener('keyup', function (e) {
+        if (e.key === 'a') {
+            keys.left = false;
+        }
+        if (e.key === 'd') {
+            keys.right = false;
+        }
+        if (e.code === 'Space') {
+            keys.jump = false;
+            keys.highJump = false;
+        }
+    });
+
+    // Zmiana koloru piłki
+    ballColorSelect.addEventListener('change', function () {
+        ball.color = this.value;
+    });
+
+    // Ustawienie czasu pojawiania się przeciwników
+    spawnTimeInput.addEventListener('input', function () {
+        spawnTime = parseInt(this.value);
+    });
+
+    // Start gry po kliknięciu przycisku "Graj"
+    playButton.addEventListener('click', function () {
+        lobby.style.display = 'none';
+        settingsDiv.style.display = 'block';
+        canvas.style.display = 'block';
+        ball.lives = 3;
+        ball.points = 0;
+        livesDisplay.innerText = ball.lives;
+        scoreDisplay.innerText = ball.points;
+        gameRunning = true;
+
+        // Uruchamiamy pętlę gry
+        gameLoop();
+
+        // Spawnowanie przeciwników w zadanych odstępach czasu
+        setInterval(spawnEnemy, spawnTime);
+    });
+
+    // Powrót do lobby po kliknięciu przycisku "Ustawienia"
+    settingsButton.addEventListener('click', function () {
+        alert("Tutaj można by dodać opcje zmiany ustawień gry!");
+    });
+
+    // Dostosowanie rozmiaru ekranu gry do zmiany wielkości okna
+    window.addEventListener('resize', function () {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+    });
+</script>
+
+</body>
+</html>
+
